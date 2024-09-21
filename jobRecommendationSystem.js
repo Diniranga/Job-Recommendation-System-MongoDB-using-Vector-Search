@@ -5,7 +5,7 @@ const { HfInference } = require("@huggingface/inference");
 const { MONGO_HOST, MONGO_USER, MONGO_PASS, MONGO_DB , MONGO_COLLECTION } = process.env;
 
 const uri = `mongodb+srv://${MONGO_USER}:${MONGO_PASS}@${MONGO_HOST}/?retryWrites=true&w=majority`;
-const hf = new HfInference("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");
+const hf = new HfInference("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");
 
 const jobPosts = require("./jobPostings");
 
@@ -79,7 +79,7 @@ async function extractFilterCriteria (query) {
         console.log(result);
         const highestScoreLabel = result.labels[0];
         const score = result.scores[0];
-        if(score > 0.5) {
+        if(score > 0.4) {
             switch (highestScoreLabel) {
                 case "location":
                     criteria.location = word;
@@ -103,7 +103,7 @@ async function extractFilterCriteria (query) {
 }
 
 
-async function performSimilaritySearch(collection, queryTerm, filteredJobPostings) {
+async function performSimilaritySearch(collection, queryTerm, filteredCriteria) {
     try {
         const queryEmbedding = await generateEmbeddings([queryTerm]);
 
@@ -125,11 +125,35 @@ async function performSimilaritySearch(collection, queryTerm, filteredJobPosting
                 }
             },
             {
+                '$match': {
+                    '$or': []
+                }
+            },
+            {
                 '$sort': {
                     'score': -1
                 }
             }
         ];
+
+        // // Add filter conditions based on filteredCriteria
+        // if (filteredCriteria.location) {
+        //     pipeline[2]['$match']['$or'].push({ 'location': { '$regex': filteredCriteria.location } });
+        // }
+        // if (filteredCriteria.jobTitle) {
+        //     pipeline[2]['$match']['$or'].push({ 'jobTitle': { '$regex': filteredCriteria.jobTitle } });
+        // }
+        // if (filteredCriteria.company) {
+        //     pipeline[2]['$match']['$or'].push({ 'company': { '$regex': filteredCriteria.company, } });
+        // }
+        // if (filteredCriteria.jobType) {
+        //     pipeline[2]['$match']['$or'].push({ 'jobType': { '$regex': filteredCriteria.jobType, } });
+        // }
+
+        // If no criteria were added, remove the $match stage
+        if (pipeline[2]['$match']['$or'].length === 0) {
+            pipeline.splice(2, 1);
+        }
 
         const results = await collection.aggregate(pipeline).toArray();
 
@@ -158,7 +182,7 @@ async function performSimilaritySearch(collection, queryTerm, filteredJobPosting
 
 async function main() {
 
-    const query = "Python Developer Scientist";
+    const query = "Python";
 
     try {
         await connectToMongoDB();
@@ -174,9 +198,9 @@ async function main() {
         // await storeEmbeddings(collection, jobPosts, jobDataEmbeddings);
 
         const filteredCriteria = await extractFilterCriteria(query);
-        const initialResults = await performSimilaritySearch(collection, query, jobPosts );
+        const initialResults = await performSimilaritySearch(collection, query, filteredCriteria );
 
-        initialResults.slice(0, 3).forEach((item, index) => {
+        initialResults.forEach((item, index) => {
             console.log(`Top ${index + 1} Recommended Job Name: ${item.job_name}`);
         });
 
